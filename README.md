@@ -4,16 +4,14 @@
 
 ### 1.1 概述
 
-  | 帧名    | 介绍       |
-  | ----- | -------- |
-  | RREQ  | 路由请求     |
-  | RREP  | 路由应答     |
-  | RERR  | 路由错误     |
-  | HELLO | 活跃路由链路检测 |
+| 帧名   | 介绍   |
+| ---- | ---- |
+| RREQ | 路由请求 |
+| RREP | 路由应答 |
+| RERR | 路由错误 |
 
+### 1.2 RREQ帧
 
-
-  ### 1.2 RREQ帧
    (_当源节点S需要向目的节点D发送数据包时，但有没有目的节点D的路由入口时，会发送RREQ帧，RREQ帧会广播。_)
 
     -帧的格式
@@ -47,9 +45,9 @@
       Originator IP Address : 发起本条路由请求信息的IP地址
       Originator Sequence Number : 发起者的路由表中现在正在使用的序列号
 
-  ### 1.3 RREP帧
-  (_当RREQ到达时，目的节点发送的反向路由帧，使用这个帧来使网络上的各个节点建立前一个节点的路由，节点只对收到的第一次RREQ产生反应，重复发送的RREQ将不能产生重复的RREP帧_)
+### 1.3 RREP帧
 
+  (_当RREQ到达时，目的节点发送的反向路由帧，使用这个帧来使网络上的各个节点建立前一个节点的路由，节点只对收到的第一次RREQ产生反应，重复发送的RREQ将不能产生重复的RREP帧_)
 
      -帧的格式
      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -77,11 +75,9 @@
       Originator IP Address : 发起本条路由请求信息的IP地址
       lifetime 生命时长 在规定的这段时间中 接受到这条消息的节点将认为这条路径是可用的
 
+### 1.4RERR帧
 
-  ### 1.4RERR帧
   (_路由错误帧，用来进行路由的错误控制_)
-
-
 
        -帧的格式
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -106,10 +102,19 @@
         Unreachable Destination Sequence Number : 与上面的目标节点对应的序列号
         Additional : 可以包含多个不可达节点，用来表示多个不可达节点有一个 加一对儿消息
 
+### 1.5 RREP-ACK 帧
 
-  ### 1.5 HELLO 消息
-  (_hello 消息实际上就是就是TTL为一的RREP消息_)
+  (_收到需要确认的帧时用来回复的帧_)
 
+    -帧的格式
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |     Type      |   Reserved    |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+    -帧中字段的含义
+    type : 4(默认4)
+    Reserved  : 填充0 会被接收端忽视的字段 .
 
 ## 2 路由表
 
@@ -124,7 +129,7 @@
 
 ## 3 代码介绍
 
-### 文件介绍
+### 3.1 文件介绍
 
 | 文件              | 说明                 |
 | --------------- | ------------------ |
@@ -138,7 +143,285 @@
 | aodv_socket.c   | 处理aodv的socket套接字   |
 | aodv_timeout.c  | 超时处理               |
 
-### 2.2 全局变量
+### 3.2 全局变量
 
 | 变量  | 数据类型 | 说明  |
 | --- | ---- | --- |
+
+### 3.3 main 函数
+
+  main函数可以简单地分成三个部分
+
+-   while之前的代码 进行了一系列定义和初始化工作。
+
+        ```
+        static char *ifname = NULL;	/* Name of interface to attach to */
+        fd_set rfds,sigaction readers;
+        int n, nfds = 0, i;
+        int daemonize = 0;
+        struct timeval *timeout;
+        struct timespec timeout_spec;
+        struct  sigact;
+        sigset_t mask, origmask;
+
+        /* Remember the name of the executable... */
+        progname = strrchr(argv[0], '/');
+
+        if (progname)
+        progname++;
+        else
+        progname = argv[0];
+        debug = 1;
+          memset (&sigact, 0, sizeof(struct sigaction));
+        sigact.sa_handler = signal_handler;
+
+        /* This server should shut down on these signals. */
+        sigaction(SIGTERM, &sigact, 0);
+        sigaction(SIGHUP, &sigact, 0);
+        sigaction(SIGINT, &sigact, 0);
+
+        sigaddset(&mask, SIGTERM);
+        sigaddset(&mask, SIGHUP);
+        sigaddset(&mask, SIGINT);
+        /* Only capture segmentation faults when we are not debugging... */
+
+    #ifndef DEBUG
+        sigaddset(&mask, SIGSEGV);
+    #endif
+
+        /* Block the signals we are watching here so that we can
+         * handle them in pselect instead. */
+        sigprocmask(SIG_BLOCK, &mask, &origmask);
+
+          ```
+
+
+-   进入while
+        这个while实际上是个永真循环，在这部分
+
+        协议将根据用户提供的不同的参数对变量进行不同的设置留给后面的操作使用，下表是对应关系
+
+      | 参数名    | 功能       |
+      | ----- | -------- |
+      | -d  | 守护进程模式     |
+      | -g  | 在每个RREQ消息上强制设置gratuitous标记     |
+      | -h  | 打印所有参数及含义     |
+      | -i | 表示要绑定的接口 |
+      | -j | 触发hello-jitter功能，默认开启|
+      | -o | opt-hellos 设置只在转发数据包的时候发送HELLO消息|
+      | -l | log输出日志 |
+      | -r | log-rt-table每隔一段时间记录路由表 |
+      | -n | 接到n个HELLO之后才当作邻居 |
+      | -u | 侦测并避免单向链路 |
+      | -w | 开启实验性的因特网网关支持 |
+      | -x | 禁用RREQ消息的扩展环搜索法 |
+      | -D | 启用重启延迟的等待 |
+      | -L | 开启本地修复 |
+      | -f | 开启链路层反馈 |
+      | -R | 开启RREQ和RRER消息的速率限制 |
+      | -q | 为控制包设置一个信号质量最小阈值 |
+      | -V | 输出版本信息 |
+
+        int opt;
+        opt = getopt_long(argc, argv, "i:fjln:dghoq:r:s:uwxDLRV", longopts, 0);
+        if (opt == EOF)
+        break;
+        switch (opt) {
+        case 0:
+        break;
+        case 'd':
+        debug = 0;
+        daemonize = 1;
+        break;
+        case 'f':
+        llfeedback = 1;
+        active_route_timeout = ACTIVE_ROUTE_TIMEOUT_LLF;
+        break;
+        case 'g':
+        rreq_gratuitous = !rreq_gratuitous;
+        break;
+        case 'i':
+        ifname = optarg;
+        break;
+        case 'j':
+        hello_jittering = !hello_jittering;
+        break;
+        case 'l':
+        log_to_file = !log_to_file;
+        break;
+        case 'n':
+        if (optarg && isdigit(*optarg)) {
+        receive_n_hellos = atoi(optarg);
+        if (receive_n_hellos < 2) {
+          fprintf(stderr, "-n should be at least 2!\n");
+          exit(-1);
+        }
+        }
+        break;
+        case 'o':
+        optimized_hellos = !optimized_hellos;
+        break;
+        case 'q':
+        if (optarg && isdigit(*optarg))
+        qual_threshold = atoi(optarg);
+        break;
+        case 'r':
+        if (optarg && isdigit(*optarg))
+        rt_log_interval = atof(optarg) * 1000;
+        break;
+        case 'u':
+        unidir_hack = !unidir_hack;
+        break;
+        case 'w':
+        internet_gw_mode = !internet_gw_mode;
+        break;
+        case 'x':
+        expanding_ring_search = !expanding_ring_search;
+        break;
+        case 'L':
+        local_repair = !local_repair;
+        break;
+        case 'D':
+        wait_on_reboot = !wait_on_reboot;
+        break;
+        case 'R':
+        ratelimit = !ratelimit;
+        break;
+        case 'V':
+        printf
+        ("\nAODV-UU v%s, %s � Uppsala University & Ericsson AB.\nAuthor: Erik Nordstr�m, <erik.nordstrom@it.uu.se>\n\n",
+        AODV_UU_VERSION, DRAFT_VERSION);
+        exit(0);
+        break;
+        case '?':
+        case ':':
+        exit(0);
+        default:
+        usage(0);
+        }
+        }
+
+-   后面代码仍然在while中\
+    分别执行了
+
+      - 检查是否是root启动
+          ```
+          if (geteuid() != 0) {
+            fprintf(stderr, "must be root\n");
+            exit(1);
+            }
+
+          ```
+      - 检查是否-d启动
+          ```
+          if (daemonize) {
+           if (fork() != 0)
+               exit(0);
+           /* Close stdin, stdout and stderr... */
+           /*  close(0); */
+           close(1);
+           close(2);
+           setsid();
+           }
+           /*
+           1. 如果是-d用作守护进程 将关闭标准输入输出流 并执行setsid()函数 当进程是会话的领头进程时setsid()调用失败并返回（-1）。
+           setsid()调用成功后，返回新的会话的ID，调用setsid函数的进程成为新的会话的领头进程，并与其父进程的会话组和进程组脱离。
+           由于会话对控制终端的独占性，进程同时与控制终端脱离。
+           2. 如果是父进程直接退出
+           */
+
+           ```
+
+      - 初始化数据结构和服务(_数据包输入输出队列_)
+
+          ```
+
+          /* Initialize data structures and services... */
+          rt_table_init();
+          log_init();
+          /*   packet_queue_init(); */
+          host_init(ifname);
+          /*   packet_input_init(); */
+          nl_init();
+          nl_send_conf_msg();
+          aodv_socket_init();
+
+      #ifdef LLFEEDBACK
+          if (llfeedback) {
+          llf_init();
+          }
+      #endif
+
+          ```
+
+      - 设置socket套接字备用
+
+          ```
+          /* Set sockets to watch... */
+          FD_ZERO(&readers);
+          for (i = 0; i < nr_callbacks; i++) {
+          FD_SET(callbacks[i].fd, &readers);
+          if (callbacks[i].fd >= nfds)
+              nfds = callbacks[i].fd + 1;
+          }
+
+          ```
+      - 重启定时器 reboot
+
+          ```
+            if (wait_on_reboot) {
+          timer_init(&worb_timer, wait_on_reboot_timeout, &wait_on_reboot);
+          timer_set_timeout(&worb_timer, DELETE_PERIOD);
+          alog(LOG_NOTICE, 0, __FUNCTION__,
+               "In wait on reboot for %d milliseconds. Disable with \"-D\".",
+               DELETE_PERIOD);
+          }
+
+          ```
+
+      - 准备好第一个HELLO帧、初始化第一个路由表
+
+          ```
+              if (!optimized_hellos && !llfeedback)
+    	hello_start();
+
+        if (rt_log_interval)
+    	log_rt_table_init();
+
+        ```
+
+      - 定时器处理
+
+        ```
+          while (1) {
+    	memcpy((char *) &rfds, (char *) &readers, sizeof(rfds));
+
+    	timeout = timer_age_queue();
+
+    	timeout_spec.tv_sec = timeout->tv_sec;
+    	timeout_spec.tv_nsec = timeout->tv_usec * 1000;
+
+    	if ((n = pselect(nfds, &rfds, NULL, NULL, &timeout_spec, &origmask)) < 0) {
+    	    if (errno != EINTR)
+    		alog(LOG_WARNING, errno, __FUNCTION__,
+    		     "Failed select (main loop)");
+    	    continue;
+    	}
+
+    	if (n > 0) {
+    	    for (i = 0; i < nr_callbacks; i++) {
+    		if (FD_ISSET(callbacks[i].fd, &rfds)) {
+    		    /* We don't want any timer SIGALRM's while executing the
+    		       callback functions, therefore we block the timer... */
+    		    (*callbacks[i].func) (callbacks[i].fd);
+    		}
+    	    }
+    	}
+        }
+
+      ```
+
+  ps：
+
+  1. pselect()用于IO复用，它们监视多个文件描述符的集合，判断是否有符合条件的时间发生。
+  2. FD_ISSET() 检查参数1是否在这个参数2里面 在这个函数中如果检查成功在执行回调函数处理对应事件
