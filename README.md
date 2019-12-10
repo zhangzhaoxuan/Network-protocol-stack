@@ -154,7 +154,7 @@
 
 -   while之前的代码 进行了一系列定义和初始化工作。
 
-        ```
+        ```C
         static char *ifname = NULL;	/* Name of interface to attach to */
         fd_set rfds,sigaction readers;
         int n, nfds = 0, i;
@@ -184,10 +184,9 @@
         sigaddset(&mask, SIGHUP);
         sigaddset(&mask, SIGINT);
         /* Only capture segmentation faults when we are not debugging... */
-
-    #ifndef DEBUG
+        #ifndef DEBUG
         sigaddset(&mask, SIGSEGV);
-    #endif
+        #endif
 
         /* Block the signals we are watching here so that we can
          * handle them in pselect instead. */
@@ -222,6 +221,7 @@
       | -q | 为控制包设置一个信号质量最小阈值 |
       | -V | 输出版本信息 |
 
+      ```C
         int opt;
         opt = getopt_long(argc, argv, "i:fjln:dghoq:r:s:uwxDLRV", longopts, 0);
         if (opt == EOF)
@@ -300,12 +300,13 @@
         usage(0);
         }
         }
+      ```
 
 -   后面代码仍然在while中\
     分别执行了
 
       - 检查是否是root启动
-          ```
+          ```C
           if (geteuid() != 0) {
             fprintf(stderr, "must be root\n");
             exit(1);
@@ -313,7 +314,7 @@
 
           ```
       - 检查是否-d启动
-          ```
+          ```C
           if (daemonize) {
            if (fork() != 0)
                exit(0);
@@ -334,7 +335,7 @@
 
       - 初始化数据结构和服务(_数据包输入输出队列_)
 
-          ```
+          ```C
 
           /* Initialize data structures and services... */
           rt_table_init();
@@ -356,7 +357,7 @@
 
       - 设置socket套接字备用
 
-          ```
+          ```C
           /* Set sockets to watch... */
           FD_ZERO(&readers);
           for (i = 0; i < nr_callbacks; i++) {
@@ -368,7 +369,7 @@
           ```
       - 重启定时器 reboot
 
-          ```
+          ```C
             if (wait_on_reboot) {
           timer_init(&worb_timer, wait_on_reboot_timeout, &wait_on_reboot);
           timer_set_timeout(&worb_timer, DELETE_PERIOD);
@@ -381,7 +382,7 @@
 
       - 准备好第一个HELLO帧、初始化第一个路由表
 
-          ```
+          ```C
               if (!optimized_hellos && !llfeedback)
     	hello_start();
 
@@ -392,7 +393,7 @@
 
       - 定时器处理
 
-        ```
+        ```C
           while (1) {
     	memcpy((char *) &rfds, (char *) &readers, sizeof(rfds));
 
@@ -425,3 +426,19 @@
 
   1. pselect()用于IO复用，它们监视多个文件描述符的集合，判断是否有符合条件的时间发生。
   2. FD_ISSET() 检查参数1是否在这个参数2里面 在这个函数中如果检查成功在执行回调函数处理对应事件
+
+
+main 函数中的其他函数
+
+  函数名 | 作用
+  - | -
+  clearup() | 清空套接字、数据表等数据结构和模块
+  usage(int status) | 打印出所有命令行参数和其作用
+  set_kernel_options | 设置内核选项
+  find_default_gw() | 寻找默认网关
+  get_if_info(char *ifname , int type) | 根据名字和类型,寻找相应的接口,返回其信息
+  attach_callback_func(int fd , callback_func_t func) | 增加一个callback数据结构元素,包括一个描述符和一个函数
+  load_modules() | 加载某个模块
+  remove_modules() | 删除某个模块
+  host_init | 初始化某个端口
+  signal_handler(int type) | 信号处理器,根据信号种类导向不同的处理
